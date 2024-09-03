@@ -1,7 +1,10 @@
 import asyncio
 import logging
+from re import Match
 
-from aiogram import Bot
+from magic_filter import RegexpMode
+
+from aiogram import Bot, F
 from aiogram import Dispatcher
 from aiogram import types
 from aiogram.filters import CommandStart, Command
@@ -54,7 +57,7 @@ async def handle_help(message: types.Message):
     )
 
 
-@dp.message(Command("code"))
+@dp.message(Command("code", prefix="/!%"))
 async def handle_command_code(message: types.Message):
     text = markdown.text(
         "Here's Python code:",
@@ -82,7 +85,55 @@ async def handle_command_code(message: types.Message):
         ),
         sep="\n",
     )
-    await message.answer(text=text)
+    await message.answer(text=text, parse_mode=ParseMode.MARKDOWN_V2)
+
+
+def is_photo(message: types.Message):
+    if not message.photo:
+        return False
+    if not message.caption:
+        return False
+    return "please" in message.caption
+
+
+# @dp.message(is_photo)
+# @dp.message(lambda message: message.photo)
+@dp.message(F.photo, ~F.caption)
+async def handle_photo_w_caption(message: types.Message):
+    await message.reply("I can't see, sorry. Could you describe it please?")
+
+
+@dp.message(F.photo, F.caption.contains("please"))
+async def handle_photo_w_caption(message: types.Message):
+    await message.reply("Don't beg me. I can't see, sorry.")
+
+
+any_media_filter = F.photo | F.vides | F.document
+
+
+@dp.message(any_media_filter, ~F.caption)
+async def handle_any_media_wo_cation(message: types.Message):
+    await message.reply("I can't see.")
+
+
+@dp.message(any_media_filter, F.caption)
+async def handle_any_media_wo_cation(message: types.Message):
+    await message.reply(f"Smth is on media. Your text: {message.caption}")
+
+
+@dp.message(F.from_user.id.in_({1360434371}), F.text == "secret")
+async def secret_admin_message(message: types.Message):
+    await message.reply("Hi, admin!")
+
+
+# @dp.message(F.text.regexp(r"^(\d+)$").as_("code"))
+# async def handle_code_only_digits(message: types.Message, code: Match[str]):
+#     await message.reply(f"Your code: {code.group()}")
+
+
+@dp.message(F.text.regexp(r"(\d+)", mode=RegexpMode.FINDALL).as_("code"))
+async def handle_code(message: types.Message, code: list[str]):
+    await message.reply(f"Your code: {code}")
 
 
 @dp.message()
@@ -109,7 +160,9 @@ async def echo_message(message: types.Message):
         )
         return
     try:
-        await message.send_copy(chat_id=message.chat.id)
+        await message.copy_to(chat_id=message.chat.id)
+        # await message.forward(chat_id=message.chat.id)
+        # await message.send_copy(chat_id=message.chat.id)
     except TypeError:
         await message.reply(text="Something new 🙂")
 
@@ -118,7 +171,8 @@ async def main():
     logging.basicConfig(level=logging.INFO)
     bot = Bot(
         token=settings.bot_token,
-        default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN_V2),
+        # default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN_V2),
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
     await dp.start_polling(bot)
 
